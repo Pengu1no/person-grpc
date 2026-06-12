@@ -31,10 +31,16 @@ func (uc *PersonUseCaseImplement) CreatePerson(ctx context.Context, firstName, l
 		return nil, fmt.Errorf("failed to generate uuid: %w", domain.ErrInvalidData)
 	}
 
-	age, gender, nationality, err := uc.enricher.Enrich(ctx, fmt.Sprintf("%s %s", firstName, lastName))
+	fullName := fmt.Sprintf("%s %s", firstName, lastName)
+
+	age, gender, nationality, err := uc.enricher.Enrich(ctx, fullName)
 	if err != nil {
 		// todo: определиться с поведением. Склонен записать в лог и пропустить полученные данные / данные по умолчанию
-		return nil, fmt.Errorf("failed to enrich person data: %w", err)
+		// todo: но можно и так
+		// return nil, fmt.Errorf("failed to enrich person data: %w", err)
+
+		// todo: переписать на логгер
+		fmt.Println(fmt.Sprintf("[INFO] enrichment partial failure for name %s: %v", fullName, err))
 	}
 
 	person := &domain.Person{
@@ -84,7 +90,8 @@ func (uc *PersonUseCaseImplement) ListPersons(ctx context.Context, page, limit u
 
 	offset := (page - 1) * limit
 
-	return uc.repo.List(ctx, offset, limit)
+	data, total, err := uc.repo.List(ctx, offset, limit)
+	return data, total, page, limit, err
 }
 
 func (uc *PersonUseCaseImplement) UpdatePerson(ctx context.Context, id uuid.UUID, input ports.UpdatePersonInput) (*domain.Person, error) {

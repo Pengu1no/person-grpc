@@ -10,7 +10,7 @@ import (
 type PersonRepository interface {
 	Save(ctx context.Context, person *domain.Person) error
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Person, error)
-	List(ctx context.Context, offset, limit uint32) ([]*domain.Person, uint32, uint32, uint32, error)
+	List(ctx context.Context, offset, limit uint32) ([]*domain.Person, uint32, error)
 	Update(ctx context.Context, person *domain.Person) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
