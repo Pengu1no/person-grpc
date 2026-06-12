@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package person;
+
+option go_package = "pkg/personpb;personpb";
+
+service PersonService {
+  rpc CreatePerson(CreatePersonRequest) returns (Person);
+  rpc GetPerson(GetPersonRequest) returns (Person);
+  rpc ListPersons(ListPersonsRequest) returns (ListPersonsResponse);
+  rpc UpdatePerson(UpdatePersonRequest) returns (Person);
+  rpc DeletePerson(DeletePersonRequest) returns (DeletePersonResponse);
+}
+
+enum Gender {
+  GENDER_UNSPECIFIED = 0;
+  GENDER_MALE = 1;
+  GENDER_FEMALE = 2;
+}
+
+message Person {
+  string id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  optional string patronymic = 4;
+  uint32 age = 5;
+  Gender gender = 6;
+  string nationality = 7;
+  repeated string emails = 8;
+}
+
+message CreatePersonRequest {
+  string first_name = 1;
+  string last_name = 2;
+  optional string patronymic = 3;
+  repeated string emails = 4;
+}
+
+message GetPersonRequest {
+  string id = 1;
+}
+
+message ListPersonsRequest {
+  uint32 page = 1;
+  uint32 limit = 2;
+}
+
+message ListPersonsResponse {
+  repeated Person data = 1;
+  uint32 total = 2;
+  uint32 page = 3;
+  uint32 limit = 4;
+}
+
+message Emails {
+  repeated string values = 1;
+}
+
+message UpdatePersonRequest {
+  string id = 1;
+  optional string first_name = 2;
+  optional string last_name = 3;
+  optional string patronymic = 4;
+  optional uint32 age = 5;
+  optional Gender gender = 6;
+  optional string nationality = 7;
+  optional Emails emails = 8;
+}
+
+message DeletePersonRequest {
+  string id = 1;
+}
+
+message DeletePersonResponse {}
