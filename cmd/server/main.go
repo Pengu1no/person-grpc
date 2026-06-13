@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -33,19 +33,26 @@ type Config struct {
 	GRPCPort                  int    `env:"GRPC_PORT" envDefault:"8080"`
 	ExternalAPITimeoutSeconds int    `env:"EXTERNAL_API_TIMEOUT_SECONDS" envDefault:"5"`
 	ShutdownTimeoutSeconds    int    `env:"SHUTDOWN_TIMEOUT_SECONDS" envDefault:"15"`
+	LogLevel                  int    `env:"LOG_LEVEL" envDefault:"0"`
+	// LogLevel = [-4]Debug | [0]Info | [4]Warn | [8]Error
 }
 
 func InitCfg() Config {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
 	if err := godotenv.Load(); err != nil {
-		log.Println("Error loading .env file. Attempting read from system env")
+		logger.Warn("Error loading .env file. Attempting to load system env vars.")
 	}
 
 	cfg := Config{}
 	if err := env.Parse(&cfg); err != nil {
-		log.Fatalf("Failed to parse env into Config struct")
+		logger.Error("Failed to parse env into Config struct")
+		os.Exit(1)
 	}
 
-	log.Println("Config loaded successfully")
+	logger.Info("Config loaded successfully")
 
 	return cfg
 }
@@ -53,26 +60,35 @@ func InitCfg() Config {
 func main() {
 	cfg := InitCfg()
 
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.Level(cfg.LogLevel),
+	}))
+	slog.SetDefault(logger)
+
 	dbURL := fmt.Sprintf("postgres://%s:%s@%s:%d/%s", cfg.DBUsername, cfg.DBPassword, cfg.DBAddress, cfg.DBPort, cfg.DBName)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	pgxConfig, err := pgxpool.ParseConfig(dbURL)
 	if err != nil {
-		log.Fatalf("failed to parse postgres connection string: %v", err)
+		slog.Error("Failed to parse postgres connection string", slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	//pgxConfig.MaxConnIdleTime = time.Minute
 
 	pool, err := pgxpool.NewWithConfig(ctx, pgxConfig)
 	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
+		slog.Error("Failed to connect to database", slog.Any("err", err))
+		os.Exit(1)
 	}
 	defer pool.Close()
 
 	if err := pool.Ping(ctx); err != nil {
-		log.Fatalf("failed to ping database: %v", err)
+		slog.Error("Failed to ping database", slog.Any("err", err))
+		os.Exit(1)
 	}
-	log.Println("Successfully connected to database")
+
+	slog.Debug("Successfully connected to database", slog.String("db_name", cfg.DBName))
 
 	apiTimeout := time.Duration(cfg.ExternalAPITimeoutSeconds) * time.Second
 
@@ -92,24 +108,28 @@ func main() {
 	grpcPort := fmt.Sprintf(":%d", cfg.GRPCPort)
 	listen, err := net.Listen("tcp", grpcPort)
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		slog.Error("Failed to listen", slog.Any("err", err))
+		os.Exit(1)
 	}
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(grpcAdapter.LoggingInterceptor(logger)),
+	)
 	personpb.RegisterPersonServiceServer(grpcServer, handler)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
 
 	go func() {
-		log.Printf("gRPC server is listening on port %s", grpcPort)
+		slog.Info("Starting gRPC server", slog.String("port", grpcPort))
 		if err := grpcServer.Serve(listen); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-			log.Fatalf("failed to serve gRPC server: %v", err)
+			slog.Error("Failed to start gRPC server", slog.Any("err", err))
+			os.Exit(1)
 		}
 	}()
 
 	sig := <-stop
-	log.Printf("received signal: %v. Shutting down..", sig)
+	slog.Info("Stopping gRPC server", slog.String("signal", sig.String()))
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), time.Duration(cfg.ShutdownTimeoutSeconds)*time.Second)
 	defer shutdownCancel()
@@ -122,11 +142,11 @@ func main() {
 
 	select {
 	case <-stopped:
-		log.Printf("graceful shutdown complete")
+		slog.Info("Graceful shutdown complete")
 	case <-shutdownCtx.Done():
-		log.Printf("[INFO] graceful timeout exceeded. Performing forced shutdown")
+		slog.Info("Graceful timeout exceeded. Performing forced shutdown")
 		grpcServer.Stop()
 	}
 
-	log.Printf("Service shutdown complete")
+	slog.Info("Service shutdown complete")
 }

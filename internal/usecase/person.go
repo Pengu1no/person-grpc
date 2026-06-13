@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"person-grpc/internal/domain"
 	"person-grpc/internal/ports"
 
@@ -39,8 +40,7 @@ func (uc *PersonUseCaseImplement) CreatePerson(ctx context.Context, firstName, l
 		// todo: но можно и так
 		// return nil, fmt.Errorf("failed to enrich person data: %w", err)
 
-		// todo: переписать на логгер
-		fmt.Println(fmt.Sprintf("[INFO] enrichment partial failure for name %s: %v", fullName, err))
+		slog.Warn("Enrichment partial failure. Will use zero values", slog.String("id", id.String()), slog.String("full_name", fullName), slog.Any("err", err))
 	}
 
 	person := &domain.Person{
