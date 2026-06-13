@@ -34,6 +34,24 @@ func (uc *PersonUseCaseImplement) CreatePerson(ctx context.Context, firstName, l
 
 	fullName := fmt.Sprintf("%s %s", firstName, lastName)
 
+	// todo: можем завернуть запрос при наличии хотя бы одного невалидного адреса
+	//for _, email := range emails {
+	//	if err := validateEmail(email); err != nil {
+	//		return nil, fmt.Errorf("%w: %s", domain.ErrInvalidData, err.Error())
+	//	}
+	//}
+	// todo: а можем просто написать об этом в лог, убрать невалидный из списка и пойти дальше
+	// предпочту этот вариант
+	checkedEmails := make([]string, 0, len(emails))
+	for _, email := range emails {
+		if err := validateEmail(email); err == nil {
+			checkedEmails = append(checkedEmails, email)
+		} else {
+			slog.Warn("Invalid email address. Skipping", slog.String("id", id.String()), slog.String("email", email))
+		}
+	}
+	emails = checkedEmails
+
 	age, gender, nationality, err := uc.enricher.Enrich(ctx, fullName)
 	if err != nil {
 		// todo: определиться с поведением. Склонен записать в лог и пропустить полученные данные / данные по умолчанию
@@ -114,6 +132,9 @@ func (uc *PersonUseCaseImplement) UpdatePerson(ctx context.Context, id uuid.UUID
 		person.Patronymic = input.Patronymic
 	}
 	if input.Age != nil {
+		if err := validateAge(*input.Age); err != nil {
+			return nil, fmt.Errorf("%w: %s", domain.ErrInvalidData, err.Error())
+		}
 		person.Age = *input.Age
 	}
 	if input.Gender != nil {
@@ -123,7 +144,16 @@ func (uc *PersonUseCaseImplement) UpdatePerson(ctx context.Context, id uuid.UUID
 		person.Nationality = *input.Nationality
 	}
 	if input.Emails != nil {
-		person.Emails = *input.Emails
+		checkedEmails := make([]string, 0, len(*input.Emails))
+		for _, email := range *input.Emails {
+			if err := validateEmail(email); err == nil {
+				checkedEmails = append(checkedEmails, email)
+			} else {
+				slog.Warn("Invalid email address. Skipping", slog.String("id", id.String()), slog.String("email", email))
+			}
+		}
+
+		person.Emails = checkedEmails
 	}
 
 	if err := uc.repo.Update(ctx, person); err != nil {

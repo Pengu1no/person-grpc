@@ -1,14 +1,7 @@
 package domain
 
 import (
-	"errors"
-
 	"github.com/google/uuid"
-)
-
-var (
-	ErrPersonNotFound = errors.New("person not found")
-	ErrInvalidData    = errors.New("invalid person data")
 )
 
 type Gender int32
