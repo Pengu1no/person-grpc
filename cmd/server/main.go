@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 // todo: добавить example env файл в репо
@@ -34,6 +35,8 @@ type Config struct {
 	ExternalAPITimeoutSeconds int    `env:"EXTERNAL_API_TIMEOUT_SECONDS" envDefault:"5"`
 	ShutdownTimeoutSeconds    int    `env:"SHUTDOWN_TIMEOUT_SECONDS" envDefault:"15"`
 	LogLevel                  int    `env:"LOG_LEVEL" envDefault:"0"`
+	Environment               string `env:"ENVIRONMENT" envDefault:"development"`
+
 	// LogLevel = [-4]Debug | [0]Info | [4]Warn | [8]Error
 }
 
@@ -116,6 +119,9 @@ func main() {
 		grpc.UnaryInterceptor(grpcAdapter.LoggingInterceptor(logger)),
 	)
 	personpb.RegisterPersonServiceServer(grpcServer, handler)
+	if cfg.Environment != "production" {
+		reflection.Register(grpcServer)
+	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
