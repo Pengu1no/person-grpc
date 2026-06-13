@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"person-grpc/internal/domain"
@@ -156,14 +157,62 @@ type ParallelEnricher struct {
 	ageProvider         ports.AgeProvider
 	genderProvider      ports.GenderProvider
 	nationalityProvider ports.NationalityProvider
+
+	semaphore chan struct{}
 }
 
-func NewParallelEnricher(age ports.AgeProvider, gender ports.GenderProvider, nationality ports.NationalityProvider) *ParallelEnricher {
+func NewParallelEnricher(age ports.AgeProvider, gender ports.GenderProvider, nationality ports.NationalityProvider, maxConcurrent int) *ParallelEnricher {
 	return &ParallelEnricher{
 		ageProvider:         age,
 		genderProvider:      gender,
 		nationalityProvider: nationality,
+		semaphore:           make(chan struct{}, maxConcurrent),
 	}
+}
+
+func (pe *ParallelEnricher) withRetry(ctx context.Context, operation func(ctx context.Context) error) error {
+	maxAttempts := 3
+	backoff := 100 * time.Millisecond
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if ctx.Err() != nil {
+			slog.Debug("ParallelEnricher.withRetry: context deadline exceeded")
+			return ctx.Err()
+		}
+
+		select {
+		case pe.semaphore <- struct{}{}:
+			slog.Debug("ParallelEnricher.withRetry: semaphore acquired")
+		case <-ctx.Done():
+			slog.Debug("ParallelEnricher.withRetry: context deadline exceeded")
+			return ctx.Err()
+		}
+
+		err := operation(ctx)
+		slog.Debug("ParallelEnricher.withRetry: enriching operation")
+
+		<-pe.semaphore
+		slog.Debug("ParallelEnricher.withRetry: semaphore released")
+
+		if err == nil {
+			slog.Debug("ParallelEnricher.withRetry: enrichment completed")
+			return nil
+		}
+
+		if attempt == maxAttempts {
+			slog.Debug("ParallelEnricher.withRetry: enrichment failed (max attempts exceeded)", slog.Uint64("attempts", uint64(attempt)))
+			return err
+		}
+
+		select {
+		case <-time.After(backoff * time.Duration(attempt)):
+			slog.Debug("ParallelEnricher.withRetry: backoff exceeded")
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	return fmt.Errorf("unexpected end of retry loop")
 }
 
 func (pe *ParallelEnricher) Enrich(ctx context.Context, fullName string) (uint32, domain.Gender, string, error) {
@@ -179,8 +228,11 @@ func (pe *ParallelEnricher) Enrich(ctx context.Context, fullName string) (uint32
 
 	go func() {
 		defer wg.Done()
-		var err error
-		age, err = pe.ageProvider.GetAge(ctx, fullName)
+		err := pe.withRetry(ctx, func(ctx context.Context) error {
+			var e error
+			age, e = pe.ageProvider.GetAge(ctx, fullName)
+			return e
+		})
 		if err != nil {
 			mu.Lock()
 			errs = append(errs, fmt.Errorf("failed to enrich age: %w", err))
@@ -190,8 +242,11 @@ func (pe *ParallelEnricher) Enrich(ctx context.Context, fullName string) (uint32
 
 	go func() {
 		defer wg.Done()
-		var err error
-		gender, err = pe.genderProvider.GetGender(ctx, fullName)
+		err := pe.withRetry(ctx, func(ctx context.Context) error {
+			var e error
+			gender, e = pe.genderProvider.GetGender(ctx, fullName)
+			return e
+		})
 		if err != nil {
 			mu.Lock()
 			errs = append(errs, fmt.Errorf("failed to enrich gender: %w", err))
@@ -201,8 +256,11 @@ func (pe *ParallelEnricher) Enrich(ctx context.Context, fullName string) (uint32
 
 	go func() {
 		defer wg.Done()
-		var err error
-		nationality, err = pe.nationalityProvider.GetNationality(ctx, fullName)
+		err := pe.withRetry(ctx, func(ctx context.Context) error {
+			var e error
+			nationality, e = pe.nationalityProvider.GetNationality(ctx, fullName)
+			return e
+		})
 		if err != nil {
 			mu.Lock()
 			errs = append(errs, fmt.Errorf("failed to enrich nationality: %w", err))

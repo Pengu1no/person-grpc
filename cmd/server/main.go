@@ -61,8 +61,7 @@ func main() {
 	genderize := httpClient.NewGenderizeClient(apiTimeout)
 	nationalize := httpClient.NewNationalizeClient(apiTimeout)
 
-	// todo: провести отладку с замерами быстродействия
-	dataEnricher := httpClient.NewParallelEnricher(agify, genderize, nationalize)
+	dataEnricher := httpClient.NewParallelEnricher(agify, genderize, nationalize, cfg.ExternalAPIMaxConcurrent)
 
 	repo := db.NewPostgresRepository(pool)
 
