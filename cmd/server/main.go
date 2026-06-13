@@ -23,8 +23,6 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
-// todo: добавить example env файл в репо
-
 type Config struct {
 	DBAddress                 string `env:"DB_ADDRESS"`
 	DBPort                    int    `env:"DB_PORT"`
