@@ -14,7 +14,7 @@ type Config struct {
 	DBUsername                string `env:"DB_USER"`
 	DBPassword                string `env:"DB_PASSWORD"`
 	DBName                    string `env:"DB_NAME"`
-	GRPCPort                  int    `env:"GRPC_PORT" envDefault:"8080"`
+	GRPCPort                  int    `env:"GRPC_PORT" envDefault:"50051"`
 	ExternalAPITimeoutSeconds int    `env:"EXTERNAL_API_TIMEOUT_SECONDS" envDefault:"5"`
 	ExternalAPIMaxConcurrent  int    `env:"EXTERNAL_API_MAX_CONCURRENT" envDefault:"20"`
 	ShutdownTimeoutSeconds    int    `env:"SHUTDOWN_TIMEOUT_SECONDS" envDefault:"15"`
