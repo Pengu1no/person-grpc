@@ -94,7 +94,16 @@ cp .env.example .env
 
 ### Быстрый старт
 
+#### Запуск сервера
 `docker compose up -d`
+
+#### Активация seed-данных
+
+В запущенном контейнере:
+`docker compose exec app ./seed`
+
+В одноразовом контейнере:
+`docker compose run -rm app ./seed`
 
 ### Альтернативно
 
